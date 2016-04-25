@@ -67,6 +67,8 @@ static PIN_State pinState;
 
 Task_Struct workTask;
 static uint8_t workTaskStack[256];
+#define FRONT_SENSOR_RX                         0
+#define FRONT_SENSOR_PW                         1
 
 /*
  * Initial pin configuration table
@@ -79,7 +81,7 @@ PIN_Config pinTable[] = {
     Board_LED1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
 	Board_DP0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
 	Board_DP1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
-	Board_DP2 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+	Board_DP2 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX | PIN_INPUT_EN,
     Board_BUTTON0 | PIN_INPUT_EN | PIN_PULLUP,
     PIN_TERMINATE
 };
@@ -96,6 +98,30 @@ void CallBackFunction(PIN_Handle handle, PIN_Id pinId)
 	PIN_setOutputValue(pinHandle, Board_LED2, 1);
 	FakeBlockingSlowWork(); /* Pretend to do something useful but time-consuming */
 	PIN_setOutputValue(pinHandle, Board_LED2, 0);
+
+//	front_start_time = lpc_timer_get_value(lpc_timer0);
+}
+
+
+
+void sensor_trig_HCSR04(int pin)
+{
+	PIN_setOutputValue(pinHandle, pin, 1);
+	FakeBlockingSlowWork(); /* Pretend to do something useful but time-consuming */
+	PIN_setOutputValue(pinHandle, pin, 0);
+//    left_start_time = lpc_timer_get_value(lpc_timer0);
+}
+
+void SensorCalculation()
+{
+
+    PIN_setOutputValue(pinHandle, Board_DP2, 0);
+    sensor_trig_HCSR04(Board_DP2);            //Trigger back sensor
+
+#if DEBUG
+    printf("%d \n",sensor_readings.back);
+#endif
+
 }
 
 Void workTaskFunc(UArg arg0, UArg arg1)
@@ -105,11 +131,29 @@ Void workTaskFunc(UArg arg0, UArg arg1)
     	/* Do work */
     	doWork();
         System_printf("MENP");
-
+        SensorCalculation();
     	/* Wait a while, because doWork should be a periodic thing, not continuous.*/
-    	CPUdelay(24e6);
+//    	CPUdelay(24e6);
     }
 }
+
+void InitializeInterrupts()
+{
+	// for Pin DP0
+    PIN_registerIntCb(pinHandle, CallBackFunction);
+    PIN_setInterrupt(pinHandle, /*Board_KEY_LEFT*/Board_DP0 | PIN_IRQ_NEGEDGE);
+}
+
+/*
+void ConfigureSensorPins()
+{
+    LPC_GPIO2->FIODIR |= (1 << FRONT_SENSOR_RX);
+    LPC_GPIO2->FIODIR |= (1 << BACK_SENSOR_RX);
+    LPC_GPIO2->FIODIR |= (1 << FRONT_LEFT_SENSOR_RX);
+    LPC_GPIO2->FIODIR |= (1 << FRONT_RIGHT_SENSOR_RX);
+}
+*/
+
 
 /*
  *  ======== main ========
@@ -120,10 +164,7 @@ int main(void)
     /* Call board init functions */
     PIN_init(BoardGpioInitTable);
 
-/*    IOCPortConfigureSet(IOID_25, IOC_PORT_GPIO, IOC_STD_INPUT | IOC_RISING_EDGE | IOC_INT_ENABLE);
-    IOCIntRegister(*CallBackFunction);*/
-
-//    uint32_t temp = IOCPortConfigureGet(IOID_25);
+    InitializeInterrupts();
 
 //    System_printf("%d", temp);
     /* Open LED pins */
@@ -131,9 +172,6 @@ int main(void)
     if(!pinHandle) {
         System_abort("Error initializing board pins\n");
     }
-
-    PIN_registerIntCb(pinHandle, CallBackFunction);
-    PIN_setInterrupt(pinHandle, /*Board_KEY_LEFT*/Board_DP0 | PIN_IRQ_NEGEDGE);
 
 //    PIN_setOutputValue(pinHandle, Board_LED2, 1);
 
